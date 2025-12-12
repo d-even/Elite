@@ -13,12 +13,19 @@ export const useTheme = () => {
 export const ThemeProvider = ({ children }) => {
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : false;
+    return saved ? saved === 'dark' : true; // Default to dark mode for this app
   });
 
   useEffect(() => {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    
+    // Also toggle Tailwind dark class
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [isDark]);
 
   const toggleTheme = () => setIsDark(!isDark);
@@ -55,6 +62,7 @@ export const ThemeProvider = ({ children }) => {
       dangerLight: 'rgba(239, 68, 68, 0.1)',
       info: '#3b82f6',
       infoLight: 'rgba(59, 130, 246, 0.1)',
+      inputBg: '#1a1f2e',
       shadow: 'rgba(0, 0, 0, 0.3)',
       shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.3)',
       shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.4)',
@@ -93,6 +101,7 @@ export const ThemeProvider = ({ children }) => {
       dangerLight: 'rgba(239, 68, 68, 0.08)',
       info: '#3b82f6',
       infoLight: 'rgba(59, 130, 246, 0.08)',
+      inputBg: '#f8fafc',
       shadow: 'rgba(0, 0, 0, 0.1)',
       shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
       shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',

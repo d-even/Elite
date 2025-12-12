@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../ThemeContext";
 
 const BACKEND = "http://localhost:3000";
@@ -26,16 +27,16 @@ export default function User() {
   const [pin, setPin] = useState("");
   const [totalSpent, setTotalSpent] = useState(0);
   const [notification, setNotification] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const navigate = useNavigate();
-  const { colors } = useTheme();
+  const { isDark } = useTheme();
 
-  // Load DB / scans and update last UID + card info
   const loadData = async () => {
     try {
       const res = await fetch(`${BACKEND}/scans`);
-      const data = await res.json(); // expecting earlier server to return the db OR { scans: [...] }
-      // support both shapes:
-      const db = data.scans ? data : data; // if data is db, fine. If data.scans exists, data is db too.
+      const data = await res.json();
+      const db = data.scans ? data : data;
       const scansArr = db.scans || [];
       setScans(scansArr);
 
@@ -44,21 +45,17 @@ export default function User() {
         const uid = last.uid;
         setLastUid(uid);
 
-        // Try to fetch balance endpoint which returns { uid, balance }
         const balRes = await fetch(`${BACKEND}/balance/${uid}`);
         const balData = await balRes.json();
         setBalance(Number(balData.balance || 0));
 
-        // Try to read totalSpent from db.cards if /scans returned whole db
         if (db.cards && db.cards[uid]) {
           setTotalSpent(Number(db.cards[uid].totalSpent || 0));
           if (db.cards[uid].email && !email) setEmail(db.cards[uid].email);
         } else {
-          // as fallback, fetch card info via a custom endpoint if you implement one
           setTotalSpent(0);
         }
 
-        // If balance is zero, show notification (non-blocking)
         if (Number(balData.balance || 0) === 0) {
           setNotification("Your card balance is 0. Please top-up to use merchant services.");
         }
@@ -76,10 +73,8 @@ export default function User() {
     loadData();
     const iv = setInterval(loadData, 1500);
     return () => clearInterval(iv);
-    // eslint-disable-next-line
   }, []);
 
-  // Register user (email + PIN) for current card
   const registerUser = async () => {
     if (!lastUid) return alert("Scan a card first to link user.");
     if (!email) return alert("Enter email.");
@@ -91,49 +86,29 @@ export default function User() {
       body: JSON.stringify({ uid: lastUid, email, pin })
     });
 
-    alert("User linked to card.");
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
     loadData();
   };
 
-  // Manual top-up: call backend /topup (no payment)
-  const topUpManual = async () => {
-    if (!lastUid) return alert("Scan a card first.");
-    if (!amount || Number(amount) <= 0) return alert("Enter valid amount.");
-
-    const res = await fetch(`${BACKEND}/topup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: lastUid, amount: Number(amount) })
-    });
-
-    const data = await res.json();
-    if (data.newBalance !== undefined) {
-      setBalance(data.newBalance);
-      alert("Top-up stored.");
-      setAmount("");
-      loadData();
-    } else {
-      alert("Top-up failed.");
-    }
-  };
-
-  // Razorpay payment: after success, call /topup to store amount
   const handleRazorpay = async () => {
     if (!lastUid) return alert("Scan a card first.");
     if (!amount || Number(amount) <= 0) return alert("Enter valid amount.");
 
+    setIsLoading(true);
     const loaded = await loadRazorpayScript();
-    if (!loaded) return alert("Razorpay failed to load.");
+    if (!loaded) {
+      setIsLoading(false);
+      return alert("Razorpay failed to load.");
+    }
 
-    // NOTE: Replace key with your Razorpay key. For production, generate order on server.
     const options = {
       key: "rzp_test_Rq4W4iPAoySwFt",
       amount: Number(amount) * 100,
       currency: "INR",
-      name: "RFID Wallet Recharge",
+      name: "Elite Pay",
       description: "Add money to wallet",
       handler: async function (response) {
-        // On success, store in backend
         const res = await fetch(`${BACKEND}/topup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -142,12 +117,15 @@ export default function User() {
         const data = await res.json();
         if (data.newBalance !== undefined) {
           setBalance(data.newBalance);
-          alert(`Payment success. New balance: ₹${data.newBalance}`);
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 3000);
           setAmount("");
           loadData();
-        } else {
-          alert("Top-up storage failed after payment.");
         }
+        setIsLoading(false);
+      },
+      modal: {
+        ondismiss: () => setIsLoading(false)
       }
     };
 
@@ -155,371 +133,372 @@ export default function User() {
     rzp.open();
   };
 
-  // optional: go to reward
-  const goToReward = () => {
-    navigate("/reward");
-  };
+  const quickAmounts = [100, 500, 1000, 2000];
+  const rewardProgress = Math.min((totalSpent / 5000) * 100, 100);
 
   return (
-    <div style={{ minHeight: "100vh", background: colors.bg, transition: 'all 0.3s ease' }}>
-      {/* Navbar */}
-      <nav style={{
-        background: colors.gradient1,
-        color: "white",
-        padding: "24px 0",
-        boxShadow: colors.shadowLg,
-        marginBottom: "48px",
-        backdropFilter: 'blur(10px)'
-      }}>
-        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ fontSize: '2rem' }}>💳</div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: "1.75rem", fontWeight: 700 }}>Elite Pay</h2>
-              <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Wallet Dashboard</p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button 
-              onClick={() => navigate('/merchant')}
-              style={{
-                padding: '10px 20px',
-                background: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)',
-                borderRadius: '8px',
-                color: 'white',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '0.875rem'
-              }}
-            >
-              Merchant
-            </button>
-            <button 
-              onClick={() => navigate('/reward')}
-              style={{
-                padding: '10px 20px',
-                background: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)',
-                borderRadius: '8px',
-                color: 'white',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '0.875rem'
-              }}
-            >
-              Rewards
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 24px 48px" }}>
-        {/* Notification */}
-        {notification && (
-          <div className="slide-in" style={{
-            padding: "18px 24px",
-            marginBottom: 32,
-            background: colors.warningLight,
-            border: `2px solid ${colors.warning}`,
-            borderRadius: 12,
-            color: colors.text,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            boxShadow: colors.shadowMd
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-              <span style={{ fontWeight: 500 }}>{notification}</span>
-            </div>
-            <button 
-              onClick={() => setNotification("")}
-              style={{
-                padding: "10px 20px",
-                background: colors.warning,
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontWeight: "600",
-                color: "white",
-                transition: 'all 0.3s ease'
-              }}
-            >
-              Got it
-            </button>
-          </div>
+    <div className="pb-8">
+      {/* Success Toast */}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-24 left-1/2 z-50 px-6 py-3 bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/30 flex items-center gap-2"
+          >
+            <span className="text-xl">✓</span>
+            <span className="font-medium">Success!</span>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {/* Card Stats */}
-        <div className="fade-in" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px", marginBottom: "48px" }}>
-          {/* Balance Card */}
-          <div style={{
-            background: colors.gradient1,
-            color: "white",
-            padding: "36px 28px",
-            borderRadius: 16,
-            boxShadow: colors.shadowXl,
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.3s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+      {/* Notification Banner */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={`mb-6 p-4 rounded-2xl flex items-center justify-between ${
+              isDark 
+                ? 'bg-amber-500/10 border border-amber-500/20' 
+                : 'bg-amber-50 border border-amber-200'
+            }`}
           >
-            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '5rem', opacity: 0.2 }}>💰</div>
-            <p style={{ margin: 0, opacity: 0.9, marginBottom: "10px", fontSize: "0.875rem", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>Current Balance</p>
-            <h3 style={{ margin: 0, fontSize: "3rem", color: "white", fontWeight: 700 }}>₹{balance.toLocaleString()}</h3>
-          </div>
-
-          {/* Total Spent Card */}
-          <div style={{
-            background: colors.gradient2,
-            color: "white",
-            padding: "36px 28px",
-            borderRadius: 16,
-            boxShadow: colors.shadowXl,
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.3s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '5rem', opacity: 0.2 }}>💳</div>
-            <p style={{ margin: 0, opacity: 0.9, marginBottom: "10px", fontSize: "0.875rem", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>Total Spent</p>
-            <h3 style={{ margin: 0, fontSize: "3rem", color: "white", fontWeight: 700 }}>₹{totalSpent.toLocaleString()}</h3>
-          </div>
-
-          {/* UID Card */}
-          <div style={{
-            background: colors.gradient4,
-            color: "white",
-            padding: "36px 28px",
-            borderRadius: 16,
-            boxShadow: colors.shadowXl,
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'transform 0.3s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '5rem', opacity: 0.2 }}>🏷️</div>
-            <p style={{ margin: 0, opacity: 0.9, marginBottom: "10px", fontSize: "0.875rem", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>Card UID</p>
-            <h4 style={{ margin: 0, fontSize: "1.25rem", color: "white", wordBreak: "break-all", fontWeight: 600 }}>{lastUid || "No card scanned"}</h4>
-          </div>
-        </div>
-
-        {/* Top-up Section */}
-        <div className="fade-in" style={{
-          background: colors.card,
-          padding: "36px",
-          borderRadius: 16,
-          boxShadow: colors.shadowLg,
-          marginBottom: "48px",
-          border: `1px solid ${colors.border}`
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: "28px", color: colors.text, fontSize: '1.75rem', fontWeight: 700 }}>💰 Add Funds</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "16px", alignItems: "end" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "10px", fontWeight: "600", color: colors.textSecondary, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount (₹)</label>
-              <input
-                type="number"
-                placeholder="Enter amount to add..."
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                style={{ 
-                  width: "100%", 
-                  padding: "14px 16px", 
-                  border: `2px solid ${colors.border}`, 
-                  borderRadius: 10,
-                  background: colors.inputBg,
-                  color: colors.text,
-                  fontSize: '1rem',
-                  outline: 'none',
-                  transition: 'all 0.3s'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = colors.primary;
-                  e.target.style.boxShadow = `0 0 0 3px ${colors.primary}20`;
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <span className={`font-medium ${isDark ? 'text-amber-200' : 'text-amber-800'}`}>{notification}</span>
             </div>
-            <button 
-              onClick={topUpManual}
-              className="ripple"
-              style={{
-                padding: "14px 28px",
-                background: colors.gradient4,
-                color: "white",
-                border: "none",
-                borderRadius: 10,
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: colors.shadowMd,
-                fontSize: '1rem',
-                transition: 'all 0.3s',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = colors.shadowXl;
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = colors.shadowMd;
-              }}
+            <button
+              onClick={() => setNotification("")}
+              className={`px-4 py-2 rounded-xl font-medium transition-colors ${
+                isDark 
+                  ? 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30' 
+                  : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+              }`}
             >
-              💵 Manual Top Up
+              Dismiss
             </button>
-            <button 
-              onClick={handleRazorpay}
-              className="ripple"
-              style={{
-                padding: "14px 28px",
-                background: colors.gradient1,
-                color: "white",
-                border: "none",
-                borderRadius: 10,
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: colors.shadowMd,
-                fontSize: '1rem',
-                transition: 'all 0.3s',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = colors.shadowXl;
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = colors.shadowMd;
-              }}
-            >
-              💳 Razorpay
-            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
+        <h1 className={`text-3xl md:text-4xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Welcome Back 👋
+        </h1>
+        <p className={`mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          Manage your RFID wallet and track your rewards
+        </p>
+      </motion.div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+        {/* Balance Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="col-span-1 md:col-span-2"
+        >
+          <div className={`relative overflow-hidden rounded-3xl p-6 md:p-8 ${
+            isDark ? 'bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500'
+          } shadow-xl shadow-indigo-500/20`}>
+            {/* Pattern Overlay */}
+            <div className="absolute inset-0 opacity-10">
+              <svg className="w-full h-full" viewBox="0 0 100 100">
+                <pattern id="dots" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="1" fill="white" />
+                </pattern>
+                <rect width="100" height="100" fill="url(#dots)" />
+              </svg>
+            </div>
+            
+            <div className="relative z-10">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div>
+                  <p className="text-white/80 text-sm font-medium mb-1">Available Balance</p>
+                  <motion.h2
+                    key={balance}
+                    initial={{ scale: 1.1 }}
+                    animate={{ scale: 1 }}
+                    className="text-4xl md:text-5xl font-bold text-white"
+                  >
+                    ₹{balance.toLocaleString()}
+                  </motion.h2>
+                  <div className="mt-4 flex items-center gap-4">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-full">
+                      <span className={`w-2 h-2 rounded-full ${lastUid ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className="text-white/90 text-sm font-medium">
+                        {lastUid ? 'Card Connected' : 'No Card'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <div className="text-white/80 text-xs font-medium">Card UID</div>
+                  <div className="font-mono text-white bg-white/10 px-4 py-2 rounded-xl text-sm">
+                    {lastUid ? `${lastUid.slice(0, 8)}...` : 'Tap card to connect'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Spent Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className={`rounded-3xl p-6 ${isDark ? 'bg-dark-700 border border-white/5' : 'bg-white border border-gray-200'} shadow-xl`}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <span className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total Spent</span>
+            <span className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-xl">💸</span>
+          </div>
+          <p className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            ₹{totalSpent.toLocaleString()}
+          </p>
+          <p className={`mt-2 text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Lifetime spending
+          </p>
+        </motion.div>
+      </div>
+
+      {/* Unified Add Funds & Link Account Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className={`rounded-3xl p-6 md:p-8 ${isDark ? 'bg-dark-700 border border-white/5' : 'bg-white border border-gray-200'} shadow-xl`}
+      >
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-600 flex items-center justify-center text-3xl shadow-lg shadow-indigo-500/30">
+            💳
+          </div>
+          <div>
+            <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Wallet Setup & Recharge</h3>
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Link your account and add funds</p>
           </div>
         </div>
 
-        {/* User Registration Section */}
-        <div style={{
-          background: "white",
-          padding: "32px",
-          borderRadius: 12,
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-          marginBottom: "40px"
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: "24px", color: "#1f2937" }}>👤 Link User Profile</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "16px", alignItems: "end" }}>
+        <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+          {/* Left Side - Link Account */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-xl shadow-lg shadow-emerald-500/30">
+                🔐
+              </div>
+              <h4 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Link Account</h4>
+            </div>
+
             <div>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", color: "#374151" }}>Email</label>
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Email Address
+              </label>
               <input
                 type="email"
                 placeholder="your@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{ width: "100%", padding: "12px 16px", border: "2px solid #e5e7eb", borderRadius: 8 }}
+                className={`w-full px-4 py-3 rounded-xl transition-all ${
+                  isDark 
+                    ? 'bg-dark-600 border-dark-500 text-white placeholder-gray-500 focus:border-indigo-500' 
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-500'
+                } border-2 focus:outline-none focus:ring-4 focus:ring-indigo-500/10`}
               />
             </div>
+            
             <div>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", color: "#374151" }}>PIN</label>
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Security PIN
+              </label>
               <input
                 type="password"
-                placeholder="Set a 4-digit PIN"
+                placeholder="4-digit PIN"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                style={{ width: "100%", padding: "12px 16px", border: "2px solid #e5e7eb", borderRadius: 8 }}
+                maxLength={4}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className={`w-full px-4 py-3 rounded-xl transition-all ${
+                  isDark 
+                    ? 'bg-dark-600 border-dark-500 text-white placeholder-gray-500 focus:border-indigo-500' 
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-500'
+                } border-2 focus:outline-none focus:ring-4 focus:ring-indigo-500/10`}
               />
             </div>
-            <button 
-              onClick={registerUser} 
-              style={{
-                padding: "12px 24px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: "0 4px 6px rgba(0,0,0,0.1)"
-              }}
-            >
-              Save User
-            </button>
+          </div>
+
+          {/* Right Side - Add Funds */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl shadow-lg shadow-indigo-500/30">
+                💰
+              </div>
+              <h4 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Add Funds</h4>
+            </div>
+
+            {/* Quick Amount Buttons */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Quick Amount
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {quickAmounts.map((amt) => (
+                  <motion.button
+                    key={amt}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setAmount(String(amt))}
+                    className={`py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                      amount === String(amt)
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
+                        : isDark 
+                          ? 'bg-dark-600 text-gray-300 hover:bg-dark-500' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    ₹{amt}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount Input */}
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Custom Amount
+              </label>
+              <div className="relative">
+                <span className={`absolute left-4 top-1/2 -translate-y-1/2 text-lg ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>₹</span>
+                <input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={`w-full pl-10 pr-4 py-3 rounded-xl text-base font-medium transition-all ${
+                    isDark 
+                      ? 'bg-dark-600 border-dark-500 text-white placeholder-gray-500 focus:border-indigo-500' 
+                      : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-500'
+                  } border-2 focus:outline-none focus:ring-4 focus:ring-indigo-500/10`}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        
-                
-   
-
-        {/* Rewards Section */}
-        <div style={{
-          background: "white",
-          padding: "32px",
-          borderRadius: 12,
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-          marginBottom: "40px",
-          textAlign: "center"
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: "24px", color: "#1f2937" }}>🎁 Rewards Program</h3>
-          {totalSpent >= 5000 ? (
-            <div>
-              <p style={{ color: "#059669", fontSize: "1.125rem", marginBottom: "20px", fontWeight: "600" }}>
-                🎉 Congratulations! You've unlocked a reward!
-              </p>
-              <button 
-                onClick={goToReward} 
-                style={{
-                  padding: "14px 32px",
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  fontSize: "1rem",
-                  boxShadow: "0 4px 6px rgba(0,0,0,0.1)"
-                }}
-              >
-                ✨ Claim Your Reward
-              </button>
-            </div>
+        {/* Unified Action Button - Link Account & Pay with Razorpay */}
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={async () => {
+            // First, link account if email and PIN are provided
+            if (email && pin) {
+              try {
+                await registerUser();
+              } catch (err) {
+                console.error("Error linking account:", err);
+              }
+            }
+            
+            // Then, proceed with payment if amount is provided
+            if (amount && Number(amount) > 0) {
+              handleRazorpay();
+            } else if (!email || !pin) {
+              alert("Please fill in email and PIN to link your account");
+            } else if (!amount) {
+              alert("Please enter an amount to add funds");
+            }
+          }}
+          disabled={isLoading || (!email || !pin || !amount || Number(amount) <= 0)}
+          className={`w-full mt-6 py-5 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
+            isLoading || (!email || !pin || !amount || Number(amount) <= 0)
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-indigo-500/30 hover:shadow-xl'
+          }`}
+        >
+          {isLoading ? (
+            <>
+              <svg className="animate-spin w-6 h-6" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>Processing...</span>
+            </>
           ) : (
-            <div style={{ background: "#f0fdf4", padding: "24px", borderRadius: 8, border: "2px solid #dcfce7" }}>
-              <p style={{ margin: 0, color: "#165e3c", fontWeight: "600", marginBottom: "12px" }}>
-                Progress: ₹{totalSpent} / ₹5000
-              </p>
-              <div style={{
-                width: "100%",
-                height: "12px",
-                background: "#dcfce7",
-                borderRadius: "6px",
-                overflow: "hidden",
-                marginBottom: "12px"
-              }}>
-                <div style={{
-                  height: "100%",
-                  width: `${(totalSpent / 5000) * 100}%`,
-                  background: "linear-gradient(90deg, #10b981 0%, #059669 100%)",
-                  transition: "width 0.3s ease"
-                }}></div>
-              </div>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>
-                Spend ₹{5000 - totalSpent} more to unlock your reward!
+            <>
+          
+              <span>Top Up and Activate</span>
+            </>
+          )}
+        </motion.button>
+
+        {/* Helper Text */}
+        <p className={`mt-4 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Fill in your email, PIN, and amount to link your account and add funds in one step
+        </p>
+      </motion.div>
+
+      {/* Rewards Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className={`mt-6 rounded-3xl p-6 md:p-8 ${isDark ? 'bg-dark-700 border border-white/5' : 'bg-white border border-gray-200'} shadow-xl`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-3xl shadow-lg shadow-amber-500/30">
+              🎁
+            </div>
+            <div>
+              <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Rewards Program</h3>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {rewardProgress >= 100 ? 'Reward unlocked!' : `Spend ₹${(5000 - totalSpent).toLocaleString()} more to unlock`}
               </p>
             </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="flex-1 max-w-md">
+            <div className="flex justify-between text-sm mb-2">
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Progress</span>
+              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ₹{totalSpent.toLocaleString()} / ₹5,000
+              </span>
+            </div>
+            <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-dark-600' : 'bg-gray-200'}`}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${rewardProgress}%` }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
+              />
+            </div>
+          </div>
+
+          {/* Claim Reward Button - Only shows when progress reaches 100% */}
+          {rewardProgress >= 100 && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/reward')}
+              className="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-amber-500/30"
+            >
+              ✨ Claim Reward
+            </motion.button>
           )}
         </div>
-      </div>
+      </motion.div>
+
+      
     </div>
   );
 }
