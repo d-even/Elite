@@ -17,7 +17,19 @@ if (!fs.existsSync(DB_FILE)) {
 }
 
 function loadDB() {
-  return JSON.parse(fs.readFileSync(DB_FILE));
+  try {
+    const raw = fs.readFileSync(DB_FILE, "utf8").trim();
+    if (!raw) {
+      const init = { cards: {}, scans: [], fees: [], transactions: [] };
+      saveDB(init);
+      return init;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    const init = { cards: {}, scans: [], fees: [], transactions: [] };
+    saveDB(init);
+    return init;
+  }
 }
 
 function saveDB(db) {

@@ -9,7 +9,7 @@ const char* password = "INDIA070";    // <-- Replace
 
 // ===== BACKEND =====
 // Use your PC IP (backend server)
-String backendURL = "http://172.23.150.217:3000/scan";   // <-- Replace
+String backendURL = "http://192.168.0.105:3000/scan";   // <-- Replace
 
 // ===== RFID PINS =====
 #define SS_PIN 21
