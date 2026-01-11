@@ -10,7 +10,7 @@ import Reward from "./reward/reward";
 import Eth from "./reward/eth";
 import NftVoucher from "./reward/nftVoucher";
 
-// Wrapper component for pages that need the Layout
+
 const LayoutWrapper = ({ children }) => (
   <Layout>{children}</Layout>
 );

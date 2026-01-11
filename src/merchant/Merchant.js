@@ -18,6 +18,10 @@ export default function Merchant() {
   const [cardData, setCardData] = useState("");
   const [isReadingTag, setIsReadingTag] = useState(false);
   const [tagTextData, setTagTextData] = useState("");
+  const [isScanningProduct, setIsScanningProduct] = useState(false);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [isRegisteringProduct, setIsRegisteringProduct] = useState(false);
   const { isDark } = useTheme();
 
   const loadData = async () => {
@@ -156,19 +160,244 @@ export default function Merchant() {
 
   const quickAmounts = [50, 100, 200, 500];
 
+  // Register a new product: enter name & price, scan tag UID, save to backend product DB
+  async function handleRegisterProduct() {
+    if (!newProductName.trim()) {
+      alert("Enter product name first.");
+      return;
+    }
+
+    const priceNum = Number(newProductPrice);
+    if (!priceNum || priceNum <= 0) {
+      alert("Enter a valid product price.");
+      return;
+    }
+
+    try {
+      setIsRegisteringProduct(true);
+
+      const timeoutMs = 15000;
+      const pollIntervalMs = 500;
+      const start = Date.now();
+      const previousUid = lastUid;
+      let detectedUid = "";
+
+      while (Date.now() - start < timeoutMs) {
+        try {
+          const res = await fetch(`${BACKEND}/scans`);
+          const data = await res.json();
+          const scansArr = data.scans || [];
+
+          if (scansArr.length > 0) {
+            const latest = scansArr[scansArr.length - 1];
+            if (latest && latest.uid) {
+              detectedUid = latest.uid;
+              if (!previousUid || detectedUid !== previousUid) {
+                break;
+              }
+            }
+          }
+
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+        } catch (err) {
+          console.error("Error polling scans for product registration:", err);
+        }
+      }
+
+      if (!detectedUid) {
+        alert("No tag detected. Please scan the product tag again.");
+        setIsRegisteringProduct(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${BACKEND}/product`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: detectedUid, name: newProductName.trim(), price: priceNum })
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || "Failed to save product");
+        }
+
+        alert(`Product saved for UID ${detectedUid}.`);
+        setNewProductName("");
+        setNewProductPrice("");
+      } catch (err) {
+        console.error("Error saving product:", err);
+        alert("Error saving product. Please try again.");
+      } finally {
+        setIsRegisteringProduct(false);
+      }
+    } catch (err) {
+      console.error("Register product error:", err);
+      setIsRegisteringProduct(false);
+    }
+  }
+
+  // Scan a product tag and auto-fill amount from backend product DB
+  async function handleScanProduct() {
+    try {
+      setIsScanningProduct(true);
+
+      const timeoutMs = 15000;
+      const pollIntervalMs = 500;
+      const start = Date.now();
+      const previousUid = lastUid;
+      let detectedUid = "";
+
+      while (Date.now() - start < timeoutMs) {
+        try {
+          const res = await fetch(`${BACKEND}/scans`);
+          const data = await res.json();
+          const scansArr = data.scans || [];
+
+          if (scansArr.length > 0) {
+            const latest = scansArr[scansArr.length - 1];
+            if (latest && latest.uid) {
+              detectedUid = latest.uid;
+              if (!previousUid || detectedUid !== previousUid) {
+                break;
+              }
+            }
+          }
+
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+        } catch (err) {
+          console.error("Error polling scans for product:", err);
+        }
+      }
+
+      if (!detectedUid) {
+        alert("No product tag detected. Please try again.");
+        setIsScanningProduct(false);
+        return;
+      }
+
+      try {
+        const prodRes = await fetch(`${BACKEND}/product/${detectedUid}`);
+        if (!prodRes.ok) {
+          throw new Error("Product not found for this UID");
+        }
+        const prodData = await prodRes.json();
+        const price = Number(prodData.price || 0);
+        if (!price) {
+          alert("Product found but price is not set.");
+        } else {
+          setAmount(String(price));
+        }
+      } catch (err) {
+        console.error("Error fetching product data:", err);
+        alert("No product linked with this tag.");
+      } finally {
+        setIsScanningProduct(false);
+      }
+    } catch (err) {
+      console.error("Scan product error:", err);
+      setIsScanningProduct(false);
+    }
+  }
+
   // Function to read RFID card data from hardware
   async function readCardData() {
     try {
       setIsReadingCard(true);
-      setCardData("Waiting for RFID card... Please tap your card on the reader.");
-      
+      setCardData("Waiting for card... Please tap your card on the reader.");
+
+      // Prefer Web NFC when available so we can read both UID and text data
+      if (typeof window !== "undefined" && "NDEFReader" in window) {
+        try {
+          // eslint-disable-next-line no-undef
+          const reader = new NDEFReader();
+          await reader.scan();
+
+          reader.addEventListener("reading", async ({ message, serialNumber }) => {
+            try {
+              const uid = serialNumber || "";
+
+              // Collect text records from the NFC message
+              const textRecords = [];
+              if (message && message.records) {
+                message.records.forEach((record, index) => {
+                  try {
+                    if (record.recordType === "text") {
+                      const decoder = new TextDecoder();
+                      const textData = decoder.decode(record.data);
+                      textRecords.push({ index, data: textData });
+                    }
+                  } catch (err) {
+                    console.error("Error decoding text record:", err);
+                  }
+                });
+              }
+
+              // Fetch balance and card info from backend using UID
+              let balanceValue = 0;
+              let cardInfo = null;
+
+              if (uid) {
+                const balRes = await fetch(`${BACKEND}/balance/${uid}`);
+                const balData = await balRes.json();
+                balanceValue = Number(balData.balance || 0);
+
+                const dbRes = await fetch(`${BACKEND}/scans`);
+                const dbData = await dbRes.json();
+                cardInfo = dbData.cards && dbData.cards[uid] ? dbData.cards[uid] : null;
+              }
+
+              const textSection =
+                textRecords.length > 0
+                  ? `\nText Content:\n${textRecords
+                      .map((r) => `[${r.index + 1}] ${r.data}`)
+                      .join("\n\n")}`
+                  : "\nNo text data found on this card.";
+
+              const formattedData = `RFID / NFC Card Information:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UID: ${uid || "N/A"}
+Balance: ₹${balanceValue.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+${cardInfo ? `Email: ${cardInfo.email || "Not set"}` : ""}
+${cardInfo ? `Total Spent: ₹${(cardInfo.totalSpent || 0).toLocaleString("en-IN")}` : ""}
+${cardInfo && cardInfo.limits ? `Spending Limits: ${Object.keys(cardInfo.limits).join(", ")}` : ""}${textSection}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+              setCardData(formattedData);
+            } catch (err) {
+              console.error("Error fetching card data (NFC):", err);
+              setCardData(
+                "✅ Card detected!\n\nError fetching additional data: " +
+                  err.message
+              );
+            } finally {
+              setIsReadingCard(false);
+            }
+          });
+
+          reader.addEventListener("readingerror", () => {
+            setCardData("❌ Error reading NFC card. Please try again.");
+            setIsReadingCard(false);
+          });
+
+          // Stop here; NFC handlers will update state when a card is read
+          return;
+        } catch (err) {
+          console.error("NFC read error in readCardData, falling back to backend polling:", err);
+          // fall through to backend polling as a fallback
+        }
+      }
+
       const timeoutMs = 20000; // 20 seconds timeout
       const pollIntervalMs = 500; // Check every 500ms
       const start = Date.now();
       let previousUid = lastUid;
       let detectedUid = "";
 
-      // Poll backend for new card scan
+      // Poll backend for new card scan (fallback when Web NFC is unavailable)
       while (Date.now() - start < timeoutMs) {
         try {
           const res = await fetch(`${BACKEND}/scans`);
@@ -393,6 +622,34 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
           ))}
         </div>
 
+        {/* Scan Product Button - auto fills amount from product UID */}
+        <motion.button
+          whileHover={{ scale: isScanningProduct ? 1 : 1.02 }}
+          whileTap={{ scale: isScanningProduct ? 1 : 0.98 }}
+          onClick={handleScanProduct}
+          disabled={isProcessing || isScanningProduct}
+          className={`w-full mb-4 py-3 rounded-2xl font-semibold text-base transition-all flex items-center justify-center gap-3 ${
+            isProcessing || isScanningProduct
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-md shadow-indigo-500/30 hover:shadow-lg'
+          }`}
+        >
+          {isScanningProduct ? (
+            <>
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>Scanning product tag...</span>
+            </>
+          ) : (
+            <>
+              <span>📦</span>
+              <span>Scan Product (auto-fill)</span>
+            </>
+          )}
+        </motion.button>
+
         {/* Amount Input */}
         <div className="mb-6">
           <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -507,34 +764,6 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
               </>
             )}
           </motion.button>
-
-          {/* Read Tag Text Button */}
-          <motion.button
-            whileHover={{ scale: isReadingTag ? 1 : 1.02 }}
-            whileTap={{ scale: isReadingTag ? 1 : 0.98 }}
-            onClick={readTagText}
-            disabled={isReadingTag || isReadingCard}
-            className={`py-4 px-6 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
-              isReadingTag || isReadingCard
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-xl'
-            }`}
-          >
-            {isReadingTag ? (
-              <>
-                <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <span>Reading...</span>
-              </>
-            ) : (
-              <>
-                <span>🏷️</span>
-                <span>Read Tag Text</span>
-              </>
-            )}
-          </motion.button>
         </div>
 
         {/* Display Card Data */}
@@ -568,6 +797,89 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
             </pre>
           </motion.div>
         )}
+      </motion.div>
+
+      {/* Product Registration Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className={`mt-6 rounded-3xl p-6 md:p-8 ${isDark ? 'bg-dark-700 border border-white/5' : 'bg-white border border-gray-200'} shadow-xl`}
+      >
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-3xl shadow-lg shadow-amber-500/30">
+            🏷️
+          </div>
+          <div>
+            <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Add Product Tag</h3>
+            <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Enter product details, then scan a tag to save
+            </p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Product Name
+            </label>
+            <input
+              type="text"
+              value={newProductName}
+              onChange={(e) => setNewProductName(e.target.value)}
+              placeholder="e.g. Sandwich, Coffee"
+              className={`w-full px-4 py-3 rounded-2xl text-base transition-all ${
+                isDark
+                  ? 'bg-dark-600 border-dark-500 text-white placeholder-gray-600 focus:border-amber-500'
+                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-amber-500'
+              } border-2 focus:outline-none focus:ring-4 focus:ring-amber-500/10`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Product Price (₹)
+            </label>
+            <input
+              type="number"
+              value={newProductPrice}
+              onChange={(e) => setNewProductPrice(e.target.value)}
+              placeholder="e.g. 50"
+              className={`w-full px-4 py-3 rounded-2xl text-base transition-all ${
+                isDark
+                  ? 'bg-dark-600 border-dark-500 text-white placeholder-gray-600 focus:border-amber-500'
+                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-amber-500'
+              } border-2 focus:outline-none focus:ring-4 focus:ring-amber-500/10`}
+            />
+          </div>
+        </div>
+
+        <motion.button
+          whileHover={{ scale: isRegisteringProduct ? 1 : 1.02 }}
+          whileTap={{ scale: isRegisteringProduct ? 1 : 0.98 }}
+          onClick={handleRegisterProduct}
+          disabled={isRegisteringProduct}
+          className={`w-full py-3 rounded-2xl font-semibold text-base transition-all flex items-center justify-center gap-3 ${
+            isRegisteringProduct
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/30 hover:shadow-lg'
+          }`}
+        >
+          {isRegisteringProduct ? (
+            <>
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span>Waiting for product tag...</span>
+            </>
+          ) : (
+            <>
+              <span>➕</span>
+              <span>Scan &amp; Save Product</span>
+            </>
+          )}
+        </motion.button>
       </motion.div>
 
       {/* Scan Modal */}

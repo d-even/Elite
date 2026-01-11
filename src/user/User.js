@@ -108,6 +108,13 @@ export default function User() {
       currency: "INR",
       name: "Elite Pay",
       description: "Add money to wallet",
+      config_id: "config_S2SSAYi3zBmN7v",
+      method: {
+        upi: 0,
+        card: 1,
+        netbanking: 1,
+        wallet: 0
+      },
       handler: async function (response) {
         const res = await fetch(`${BACKEND}/topup`, {
           method: "POST",
@@ -498,7 +505,6 @@ export default function User() {
         </div>
       </motion.div>
 
-      
     </div>
   );
 }

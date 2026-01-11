@@ -9,11 +9,17 @@ app.use(express.json());
 app.use(cors());
 
 const DB_FILE = path.join(__dirname, "db.json");
+const PRODUCT_DB_FILE = path.join(__dirname, "productdb.json");
 
-// utility: ensure db file exists
+// utility: ensure db files exist
 if (!fs.existsSync(DB_FILE)) {
   const init = { cards: {}, scans: [], fees: [], transactions: [] };
   fs.writeFileSync(DB_FILE, JSON.stringify(init, null, 2));
+}
+
+if (!fs.existsSync(PRODUCT_DB_FILE)) {
+  const initProducts = { products: {} };
+  fs.writeFileSync(PRODUCT_DB_FILE, JSON.stringify(initProducts, null, 2));
 }
 
 function loadDB() {
@@ -34,6 +40,27 @@ function loadDB() {
 
 function saveDB(db) {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+// product DB helpers
+function loadProductDB() {
+  try {
+    const raw = fs.readFileSync(PRODUCT_DB_FILE, "utf8").trim();
+    if (!raw) {
+      const init = { products: {} };
+      fs.writeFileSync(PRODUCT_DB_FILE, JSON.stringify(init, null, 2));
+      return init;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    const init = { products: {} };
+    fs.writeFileSync(PRODUCT_DB_FILE, JSON.stringify(init, null, 2));
+    return init;
+  }
+}
+
+function saveProductDB(db) {
+  fs.writeFileSync(PRODUCT_DB_FILE, JSON.stringify(db, null, 2));
 }
 
 // --------------------
@@ -253,6 +280,53 @@ app.post("/deduct", async (req, res) => {
 app.get("/fees", (req, res) => {
   const db = loadDB();
   res.json(db.fees);
+});
+
+// --------------------
+// GET /product/:uid
+// return product info for a scanned product tag
+// --------------------
+app.get("/product/:uid", (req, res) => {
+  const uid = req.params.uid;
+  const productDb = loadProductDB();
+  const product = productDb.products && productDb.products[uid];
+
+  if (!product) {
+    return res.status(404).json({ error: "Product not found" });
+  }
+
+  res.json({ uid, ...product });
+});
+
+// --------------------
+// POST /product
+// body: { uid, name, price }
+// Save or update product linked to a tag UID
+// --------------------
+app.post("/product", (req, res) => {
+  try {
+    const { uid, name, price } = req.body;
+    if (!uid || !name || price === undefined) {
+      return res.status(400).json({ error: "Missing uid, name, or price" });
+    }
+
+    const productDb = loadProductDB();
+    if (!productDb.products) {
+      productDb.products = {};
+    }
+
+    productDb.products[uid] = {
+      name: String(name),
+      price: Number(price)
+    };
+
+    saveProductDB(productDb);
+
+    res.json({ uid, name: String(name), price: Number(price) });
+  } catch (err) {
+    console.error("Error saving product:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // --------------------

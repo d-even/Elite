@@ -1,0 +1,12 @@
+{
+  "products": {
+    "53498E9EA20001": {
+      "name": "cofee",
+      "price": 200
+    },
+    "533A8E9EA20001": {
+      "name": "Lipsick",
+      "price": 1000
+    }
+  }
+}
