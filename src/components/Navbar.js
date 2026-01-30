@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
 
   const navItems = [
     { path: '/user', label: 'Dashboard', icon: '💳' },
@@ -68,6 +70,16 @@ const Navbar = () => {
 
             {/* Right Side */}
             <div className="flex items-center gap-3">
+              {/* User Info */}
+              <div className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-xl ${isDark ? 'bg-dark-700/50' : 'bg-gray-100/50'}`}>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                  {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+                <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {user?.username || 'User'}
+                </span>
+              </div>
+
               {/* Theme Toggle */}
               <motion.button
                 whileHover={{ scale: 1.1 }}
@@ -76,6 +88,17 @@ const Navbar = () => {
                 className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDark ? 'bg-dark-700 text-yellow-400' : 'bg-gray-100 text-gray-600'} transition-colors`}
               >
                 {isDark ? '☀️' : '🌙'}
+              </motion.button>
+
+              {/* Logout Button */}
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={logout}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDark ? 'bg-red-600/20 text-red-400 hover:bg-red-600/30' : 'bg-red-100 text-red-600 hover:bg-red-200'} transition-colors`}
+                title="Logout"
+              >
+                🚪
               </motion.button>
 
               {/* Mobile Menu Toggle */}

@@ -77,6 +77,7 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-dark-900 overflow-hidden relative">
+      
       {/* Animated Background */}
       <div className="fixed inset-0 mesh-gradient" />
       <div className="fixed inset-0 grid-pattern" />

@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "./ThemeContext";
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Landing from "./components/Landing";
 import Layout from "./components/Layout";
 import User from "./user/User";
@@ -18,24 +20,66 @@ const LayoutWrapper = ({ children }) => (
 export default function App() {
   return (
     <ThemeProvider>
-      <Router>
-        <Routes>
-          {/* Landing page without navbar */}
-          <Route path="/" element={<Landing />} />
-          
-          {/* Main app pages with navbar */}
-          <Route path="/user" element={<LayoutWrapper><User /></LayoutWrapper>} />
-          <Route path="/limits" element={<LayoutWrapper><UseLimits /></LayoutWrapper>} />
-          <Route path="/merchant" element={<LayoutWrapper><Merchant /></LayoutWrapper>} />
-          <Route path="/admin" element={<LayoutWrapper><Admin /></LayoutWrapper>} />
-          <Route path="/reward" element={<LayoutWrapper><Reward /></LayoutWrapper>} />
-          <Route path="/eth" element={<LayoutWrapper><Eth /></LayoutWrapper>} />
-          <Route path="/nftVoucher" element={<LayoutWrapper><NftVoucher /></LayoutWrapper>} />
-          
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </Router>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            {/* Protected Landing page */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Landing />
+              </ProtectedRoute>
+            } />
+            
+            {/* Protected Main app pages with navbar */}
+            <Route path="/user" element={
+              <ProtectedRoute>
+                <LayoutWrapper><User /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/limits" element={
+              <ProtectedRoute>
+                <LayoutWrapper><UseLimits /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/merchant" element={
+              <ProtectedRoute>
+                <LayoutWrapper><Merchant /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute>
+                <LayoutWrapper><Admin /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/reward" element={
+              <ProtectedRoute>
+                <LayoutWrapper><Reward /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/eth" element={
+              <ProtectedRoute>
+                <LayoutWrapper><Eth /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/nftVoucher" element={
+              <ProtectedRoute>
+                <LayoutWrapper><NftVoucher /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
+
+
+
+
+
+
+
+

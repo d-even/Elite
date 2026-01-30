@@ -4,6 +4,22 @@ import { useTheme } from "../ThemeContext";
 
 const BACKEND = "http://localhost:3000";
 
+const TO_ADDRESS = "0xEe20A8fCBFB86BA1D8C9B28cafFC94fC43056b36";
+
+const NETWORKS = {
+  2: "Base",
+  3: "Binance",
+  4: "Arbitrum",
+  10: "Polygon"
+};
+
+const TOKENS = {
+  2: { USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+  3: { USDC: "0x55d398326f99059fF775485246999027B3197955" },
+  4: { USDC: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" },
+  10: { USDC: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c335" }
+};
+
 export default function Merchant() {
   const [lastUid, setLastUid] = useState("");
   const [balance, setBalance] = useState(0);
@@ -16,12 +32,15 @@ export default function Merchant() {
   const [lastTransaction, setLastTransaction] = useState(null);
   const [isReadingCard, setIsReadingCard] = useState(false);
   const [cardData, setCardData] = useState("");
-  const [isReadingTag, setIsReadingTag] = useState(false);
-  const [tagTextData, setTagTextData] = useState("");
   const [isScanningProduct, setIsScanningProduct] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
   const [isRegisteringProduct, setIsRegisteringProduct] = useState(false);
+  const [showCryptoModal, setShowCryptoModal] = useState(false);
+  const [cryptoNetwork, setCryptoNetwork] = useState("2");
+  const [cryptoToken, setCryptoToken] = useState("USDC");
+  const [cryptoWaiting, setCryptoWaiting] = useState(false);
+  const [cryptoStatus, setCryptoStatus] = useState("");
   const { isDark } = useTheme();
 
   const loadData = async () => {
@@ -159,6 +178,91 @@ export default function Merchant() {
   };
 
   const quickAmounts = [50, 100, 200, 500];
+
+  // Crypto payment handler
+  async function handleCryptoPay() {
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return alert("Enter valid amount.");
+
+    setShowCryptoModal(true);
+    setCryptoStatus("🕒 Waiting for card scan...");
+    setCryptoWaiting(true);
+
+    try {
+      const timeoutMs = 20000;
+      const pollIntervalMs = 800;
+      const start = Date.now();
+      let detectedUid = "";
+      const previousUid = lastUid;
+
+      while (Date.now() - start < timeoutMs) {
+        const res = await fetch(`${BACKEND}/scans`);
+        const data = await res.json();
+        const scansArr = (data.scans || []);
+        if (scansArr.length > 0) {
+          const latest = scansArr[scansArr.length - 1];
+          if (latest && latest.uid) {
+            detectedUid = latest.uid;
+            if (!previousUid || detectedUid !== previousUid) break;
+          }
+        }
+        setCryptoStatus("🕒 Waiting... Please tap card");
+        await new Promise(r => setTimeout(r, pollIntervalMs));
+      }
+
+      if (!detectedUid) {
+        setCryptoStatus("❌ No card detected. Please try again.");
+        setCryptoWaiting(false);
+        setTimeout(() => setShowCryptoModal(false), 2000);
+        return;
+      }
+
+      setCryptoStatus("🔐 Card detected. Processing transaction...");
+
+      const payload = {
+        uid: detectedUid,
+        type: "pay",
+        chainId: Number(cryptoNetwork),
+        token: cryptoToken,
+        tokenAddress: TOKENS[cryptoNetwork][cryptoToken],
+        amount: amt,
+        toAddress: TO_ADDRESS,
+      };
+
+      const res = await fetch(`${BACKEND}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+      
+      if (result.error) {
+        setCryptoStatus(`❌ ${result.error}`);
+        setCryptoWaiting(false);
+        setTimeout(() => setShowCryptoModal(false), 3000);
+        return;
+      }
+
+      setCryptoStatus(`✅ ${result.message || "Transaction successful!"}`);
+      setAmount("");
+      setLastUid(detectedUid);
+      setCardPresent(true);
+      
+      setTimeout(() => {
+        setCryptoWaiting(false);
+        setShowCryptoModal(false);
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+      }, 2000);
+
+    } catch (err) {
+      console.error("Crypto payment error:", err);
+      setCryptoStatus("❌ Transaction failed");
+      setCryptoWaiting(false);
+      setTimeout(() => setShowCryptoModal(false), 3000);
+    }
+  }
 
   // Register a new product: enter name & price, scan tag UID, save to backend product DB
   async function handleRegisterProduct() {
@@ -464,74 +568,6 @@ ${cardInfo && cardInfo.limits ? `Spending Limits: ${Object.keys(cardInfo.limits)
     }
   }
 
-  // Function to read text from NFC tags
-  async function readTagText() {
-    try {
-      if (!('NDEFReader' in window)) {
-        alert("NFC is not supported in this browser. Please use Chrome on Android.");
-        return;
-      }
-
-      setIsReadingTag(true);
-      setTagTextData("Waiting for NFC tag... Please hold tag near device.");
-      // eslint-disable-next-line no-undef
-      const reader = new NDEFReader();
-      
-      await reader.scan();
-      
-      reader.addEventListener("reading", ({ message, serialNumber }) => {
-        console.log("NFC Tag detected:", serialNumber);
-        
-        // Read text records from NFC tag
-        const textRecords = [];
-        
-        if (message && message.records) {
-          message.records.forEach((record, index) => {
-            try {
-              if (record.recordType === "text") {
-                const decoder = new TextDecoder();
-                const textData = decoder.decode(record.data);
-                textRecords.push({
-                  index: index,
-                  data: textData
-                });
-              }
-            } catch (err) {
-              console.error("Error decoding text record:", err);
-            }
-          });
-        }
-        
-        if (textRecords.length > 0) {
-          const formattedData = `NFC Tag Text Data:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Tag UID: ${serialNumber || "N/A"}
-Text Records Found: ${textRecords.length}
-
-Text Content:
-${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-          
-          setTagTextData(formattedData);
-        } else {
-          setTagTextData(`NFC Tag detected!\nUID: ${serialNumber || "N/A"}\n\nNo text data found on this tag.`);
-        }
-        
-        setIsReadingTag(false);
-      });
-
-      reader.addEventListener("readingerror", () => {
-        setTagTextData("❌ Error reading NFC tag. Please try again.");
-        setIsReadingTag(false);
-      });
-
-    } catch (err) {
-      console.error("NFC Tag Read Error:", err);
-      setTagTextData("❌ Error accessing NFC: " + err.message);
-      setIsReadingTag(false);
-    }
-  }
-
   return (
     <div className="pb-8">
       {/* Success Toast */}
@@ -671,33 +707,59 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
           </div>
         </div>
 
-        {/* Deduct Button */}
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleDeduct}
-          disabled={isProcessing || !amount}
-          className={`w-full py-5 rounded-2xl font-bold text-xl transition-all flex items-center justify-center gap-3 ${
-            isProcessing || !amount
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-xl shadow-red-500/30 hover:shadow-2xl'
-          }`}
-        >
-          {isProcessing ? (
-            <>
-              <svg className="animate-spin w-6 h-6" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              <span>Processing...</span>
-            </>
-          ) : (
-            <>
-              <span>💳</span>
-              <span>Pay ₹{amount || '0'}</span>
-            </>
-          )}
-        </motion.button>
+        {/* Pay & Pay Eth Buttons */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleDeduct}
+            disabled={isProcessing || !amount}
+            className={`flex-1 py-5 rounded-2xl font-bold text-xl transition-all flex items-center justify-center gap-3 ${
+              isProcessing || !amount
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-xl shadow-red-500/30 hover:shadow-2xl'
+            }`}
+          >
+            {isProcessing ? (
+              <>
+                <svg className="animate-spin w-6 h-6" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span>Processing...</span>
+              </>
+            ) : (
+              <>
+                <span>💳</span>
+                <span>Pay ₹{amount || '0'}</span>
+              </>
+            )}
+          </motion.button>
+
+          {/* Pay Eth button with crypto payment functionality */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              if (!amount) {
+                alert("Enter valid amount.");
+                return;
+              }
+              setShowCryptoModal(true);
+            }}
+            disabled={!amount}
+            className={`flex-1 py-5 rounded-2xl font-bold text-xl transition-all flex items-center justify-center gap-3 ${
+              !amount
+                ? 'bg-gray-400 cursor-not-allowed'
+                : isDark
+                ? 'bg-dark-600 text-emerald-300 border border-emerald-500/40 hover:bg-dark-500'
+                : 'bg-white text-emerald-700 border border-emerald-400 hover:bg-emerald-50'
+            }`}
+          >
+            <span>🪙</span>
+           <span>Pay ETH {amount *0.001 || '0'}</span>
+          </motion.button>
+        </div>
 
         {/* Transaction Info */}
         <div className={`mt-6 p-4 rounded-2xl ${isDark ? 'bg-dark-600' : 'bg-gray-50'}`}>
@@ -742,9 +804,9 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
             whileHover={{ scale: isReadingCard ? 1 : 1.02 }}
             whileTap={{ scale: isReadingCard ? 1 : 0.98 }}
             onClick={readCardData}
-            disabled={isReadingCard || isReadingTag}
+            disabled={isReadingCard }
             className={`py-4 px-6 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
-              isReadingCard || isReadingTag
+              isReadingCard
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl'
             }`}
@@ -783,20 +845,7 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
         )}
 
         {/* Display Tag Text Data */}
-        {tagTextData && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`mt-6 p-4 rounded-xl ${isDark ? 'bg-dark-600 border border-white/10' : 'bg-gray-50 border border-gray-200'}`}
-          >
-            <h4 className={`font-semibold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              📝 Tag Text Data:
-            </h4>
-            <pre className={`text-xs font-mono overflow-auto whitespace-pre-wrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              {tagTextData}
-            </pre>
-          </motion.div>
-        )}
+        
       </motion.div>
 
       {/* Product Registration Section */}
@@ -955,6 +1004,144 @@ ${textRecords.map(r => `[${r.index + 1}] ${r.data}`).join('\n\n')}
                       Cancel
                     </motion.button>
                   )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Crypto Payment Modal */}
+      <AnimatePresence>
+        {showCryptoModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => !cryptoWaiting && setShowCryptoModal(false)}
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md"
+            >
+              <div className={`rounded-3xl overflow-hidden ${isDark ? 'bg-dark-800 border border-white/10' : 'bg-white'} shadow-2xl`}>
+                <div className="p-8">
+                  {/* Header */}
+                  <div className="text-center mb-6">
+                    <motion.div
+                      animate={{ 
+                        scale: cryptoWaiting ? [1, 1.1, 1] : 1,
+                        rotate: cryptoWaiting ? [0, 360] : 0
+                      }}
+                      transition={{ 
+                        repeat: cryptoWaiting ? Infinity : 0, 
+                        duration: cryptoWaiting ? 2 : 0.5
+                      }}
+                      className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-4xl shadow-xl shadow-emerald-500/30"
+                    >
+                      {cryptoWaiting ? '⏳' : '🪙'}
+                    </motion.div>
+                    <h3 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      Crypto Payment
+                    </h3>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Amount: ₹{amount}
+                    </p>
+                  </div>
+
+                  {/* Network & Token Selection */}
+                  {!cryptoWaiting && (
+                    <div className="space-y-4 mb-6">
+                      <div>
+                        <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Select Network
+                        </label>
+                        <select
+                          value={cryptoNetwork}
+                          onChange={e => setCryptoNetwork(e.target.value)}
+                          className={`w-full px-4 py-3 rounded-xl text-base transition-all ${
+                            isDark
+                              ? 'bg-dark-600 border-dark-500 text-white focus:border-emerald-500'
+                              : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-emerald-500'
+                          } border-2 focus:outline-none focus:ring-4 focus:ring-emerald-500/10`}
+                        >
+                          {Object.entries(NETWORKS).map(([id, name]) => (
+                            <option key={id} value={id}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Select Token
+                        </label>
+                        <select
+                          value={cryptoToken}
+                          onChange={e => setCryptoToken(e.target.value)}
+                          className={`w-full px-4 py-3 rounded-xl text-base transition-all ${
+                            isDark
+                              ? 'bg-dark-600 border-dark-500 text-white focus:border-emerald-500'
+                              : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-emerald-500'
+                          } border-2 focus:outline-none focus:ring-4 focus:ring-emerald-500/10`}
+                        >
+                          {Object.keys(TOKENS[cryptoNetwork] || {}).map(sym => (
+                            <option key={sym} value={sym}>
+                              {sym}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status Message */}
+                  {cryptoStatus && (
+                    <div className={`mb-6 p-4 rounded-xl text-center ${isDark ? 'bg-dark-700' : 'bg-gray-50'}`}>
+                      <p className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {cryptoStatus}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    {!cryptoWaiting && (
+                      <>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setShowCryptoModal(false)}
+                          className={`flex-1 px-6 py-3 rounded-xl font-medium transition-colors ${
+                            isDark 
+                              ? 'bg-dark-600 text-gray-300 hover:bg-dark-500' 
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          Cancel
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleCryptoPay}
+                          className="flex-1 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl"
+                        >
+                          Accept Payment
+                        </motion.button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </motion.div>
