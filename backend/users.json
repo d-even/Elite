@@ -5,7 +5,24 @@
       "username": "deven",
       "email": "devensawant4554@gmail.com",
       "password": "1234",
-      "createdAt": "2026-01-30T12:09:14.074Z"
+      "createdAt": "2026-01-30T12:09:14.074Z",
+      "githubId": 140685852,
+      "avatarUrl": "https://avatars.githubusercontent.com/u/140685852?v=4",
+      "name": "Deven"
+    },
+    {
+      "id": "1769781585887",
+      "username": "hello",
+      "email": "hello@gmail.com",
+      "password": "Deven",
+      "createdAt": "2026-01-30T13:59:45.887Z"
+    },
+    {
+      "id": "1769793938627",
+      "username": "d_even.70",
+      "email": "hello1@gmail.com",
+      "password": "1234",
+      "createdAt": "2026-01-30T17:25:38.627Z"
     }
   ]
 }

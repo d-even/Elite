@@ -4,8 +4,10 @@ import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Landing from "./components/Landing";
 import Layout from "./components/Layout";
+import GitHubCallback from "./components/GitHubCallback";
 import User from "./user/User";
 import UseLimits from "./user/UseLimits";
+import RiskDemo from "./user/RiskDemo";
 import Merchant from "./merchant/Merchant";
 import Admin from "./admin/admin";
 import Reward from "./reward/reward";
@@ -23,6 +25,9 @@ export default function App() {
       <AuthProvider>
         <Router>
           <Routes>
+            {/* GitHub OAuth Callback - Public route */}
+            <Route path="/auth/callback" element={<GitHubCallback />} />
+            
             {/* Protected Landing page */}
             <Route path="/" element={
               <ProtectedRoute>
@@ -39,6 +44,11 @@ export default function App() {
             <Route path="/limits" element={
               <ProtectedRoute>
                 <LayoutWrapper><UseLimits /></LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/risk-demo" element={
+              <ProtectedRoute>
+                <LayoutWrapper><RiskDemo /></LayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/merchant" element={

@@ -14,6 +14,7 @@ const Navbar = () => {
   const navItems = [
     { path: '/user', label: 'Dashboard', icon: '💳' },
     { path: '/limits', label: 'Use Limits', icon: '🔒' },
+    { path: '/risk-demo', label: 'Risk AI', icon: '🛡️' },
     { path: '/merchant', label: 'Merchant', icon: '🏪' },
     { path: '/reward', label: 'Rewards', icon: '🎁' },
     { path: '/admin', label: 'Admin', icon: '⚙️' },

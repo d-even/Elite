@@ -12,6 +12,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loginTime, setLoginTime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
@@ -61,8 +62,10 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         setUser(data.user);
         setToken(data.token);
+        setLoginTime(data.loginTime); // Store login time for tracking
         localStorage.setItem('token', data.token);
-        return { success: true, message: data.message };
+        localStorage.setItem('loginTime', data.loginTime);
+        return { success: true, message: data.message, loginTime: data.loginTime };
       } else {
         return { success: false, message: data.message };
       }
@@ -87,8 +90,10 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         setUser(data.user);
         setToken(data.token);
+        setLoginTime(data.loginTime); // Store login time for tracking
         localStorage.setItem('token', data.token);
-        return { success: true, message: data.message };
+        localStorage.setItem('loginTime', data.loginTime);
+        return { success: true, message: data.message, loginTime: data.loginTime };
       } else {
         return { success: false, message: data.message };
       }
@@ -101,7 +106,9 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setToken(null);
+    setLoginTime(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('loginTime');
   };
 
   const isAuthenticated = () => {
@@ -110,7 +117,10 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    setUser,
     token,
+    loginTime,
+    setLoginTime,
     loading,
     login,
     signup,

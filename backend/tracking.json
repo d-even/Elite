@@ -1,0 +1,151 @@
+{
+  "loginTimes": {
+    "1769774954074": 1769814916748,
+    "1769793938627": 1769793938630,
+    "user123": 1769812200000
+  },
+  "sessions": [
+    {
+      "sessionId": "1769812200000",
+      "userId": "user123",
+      "timestamp": "2026-01-31T10:30:00.000Z",
+      "loginTime": "2026-01-31T10:30:00.000Z",
+      "elapsedSeconds": "2.50",
+      "action": "login_activity",
+      "location": {
+        "ip": "192.168.1.100",
+        "provided": {
+          "latitude": 40.7128,
+          "longitude": -74.006,
+          "accuracy": 65
+        }
+      },
+      "typingSpeed": 45,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "metadata": {
+        "page": "/user",
+        "device": "desktop",
+        "screenResolution": "1920x1080",
+        "keystrokeCount": 25
+      }
+    },
+    {
+      "sessionId": "1769812200000",
+      "userId": "user123",
+      "timestamp": "2026-01-31T10:30:02.000Z",
+      "loginTime": "2026-01-31T10:30:00.000Z",
+      "elapsedSeconds": "4.50",
+      "action": "periodic_activity",
+      "location": {
+        "ip": "192.168.1.100",
+        "provided": {
+          "latitude": 40.7128,
+          "longitude": -74.006,
+          "accuracy": 65
+        }
+      },
+      "typingSpeed": 48,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "metadata": {
+        "page": "/user",
+        "device": "desktop",
+        "screenResolution": "1920x1080",
+        "keystrokeCount": 42
+      }
+    },
+    {
+      "sessionId": "risk_analysis_1769812250000",
+      "userId": "user123",
+      "timestamp": "2026-01-31T10:31:00.000Z",
+      "action": "risk_analysis",
+      "location": {
+        "ip": "192.168.1.100",
+        "provided": {
+          "latitude": 40.7128,
+          "longitude": -74.006,
+          "accuracy": 65
+        }
+      },
+      "metadata": {
+        "transactionAmount": 500,
+        "riskScore": 25,
+        "riskLevel": "low",
+        "decision": "approve",
+        "riskFactors": [],
+        "currentIP": "192.168.1.100"
+      }
+    },
+    {
+      "sessionId": "risk_1769812300000",
+      "userId": "user123",
+      "timestamp": "2026-01-31T10:32:00.000Z",
+      "action": "risk_analysis_result",
+      "location": {
+        "ip": "192.168.1.100",
+        "provided": {
+          "latitude": 40.7128,
+          "longitude": -74.006,
+          "accuracy": 65
+        }
+      },
+      "metadata": {
+        "transactionAmount": 500,
+        "riskScore": 25,
+        "riskLevel": "low",
+        "decision": "approve",
+        "behavioralRiskScore": 0,
+        "flags": []
+      }
+    },
+    {
+      "sessionId": "1769812400000",
+      "userId": "user456",
+      "timestamp": "2026-01-31T11:00:00.000Z",
+      "loginTime": "2026-01-31T11:00:00.000Z",
+      "elapsedSeconds": "1.20",
+      "action": "login_activity",
+      "location": {
+        "ip": "203.0.113.50",
+        "provided": {
+          "latitude": 51.5074,
+          "longitude": -0.1278,
+          "accuracy": 45
+        }
+      },
+      "typingSpeed": 85,
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
+      "metadata": {
+        "page": "/user",
+        "device": "mobile",
+        "screenResolution": "375x812",
+        "keystrokeCount": 8
+      }
+    },
+    {
+      "sessionId": "risk_analysis_1769812450000",
+      "userId": "user456",
+      "timestamp": "2026-01-31T11:01:00.000Z",
+      "action": "risk_analysis",
+      "location": {
+        "ip": "203.0.113.75",
+        "provided": {
+          "latitude": 48.8566,
+          "longitude": 2.3522,
+          "accuracy": 30
+        }
+      },
+      "metadata": {
+        "transactionAmount": 2000,
+        "riskScore": 85,
+        "riskLevel": "critical",
+        "decision": "block",
+        "riskFactors": [
+          "location_variance",
+          "ip_variance",
+          "abnormal_typing_speed"
+        ],
+        "currentIP": "203.0.113.75"
+      }
+    }
+  ]
+}
